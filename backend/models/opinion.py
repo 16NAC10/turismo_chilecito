@@ -1,8 +1,8 @@
-from pydantic import BaseModel, conint
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class Opinion(BaseModel):
-    id_opinion: int
-    lugar_id: int
-    puntuacion: conint(ge=1, le=5)
+    id_opinion: Optional[str] = None
+    lugar_id: str
+    puntuacion: int = Field(..., ge=1, le=5)
     comentario: Optional[str] = None

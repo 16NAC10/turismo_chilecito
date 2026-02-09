@@ -1,9 +1,8 @@
 from pymongo import MongoClient
 import os
-from dao.tipo_dao import get_or_create_tipo, get_by_nombre
+from dao.tipo_dao import get_or_create_tipo, get_tipo, get_tipos_by_categoria
 from dao.servicio_dao import get_or_create_servicio
 from dao.opinion_dao import delete_by_lugar
-from dao.categoria_dao import get_by_nombre
 import uuid
 
 client = MongoClient(os.getenv("MONGO_URI", "mongodb://localhost:27017"))
@@ -34,9 +33,12 @@ def get_or_create(collection, nombre):
     collection.insert_one(nuevo)
     return nuevo["id"]
 
+
 def create_lugar(lugar: dict):
-    tipo_id = get_or_create(tipos, lugar.get("tipo_nombre"))
-    categoria_id = get_or_create(categorias, lugar.get("categoria_nombre"))
+    tipo_id = get_or_create_tipo(
+        lugar.get("tipo_nombre"),
+        lugar.get("categoria_nombre")
+    )
 
     doc = {
         "id": new_uuid(),
@@ -45,81 +47,149 @@ def create_lugar(lugar: dict):
         "lat": lugar["lat"],
         "lon": lugar["lon"],
         "tipo_id": tipo_id,
-        "categoria_id": categoria_id
+        "servicios_ids": lugar.get("servicios", []),
+        "source": lugar.get("source")
     }
 
-    lugares.update_one(
-        {"osm_id": lugar.get("osm_id")},
-        {"$setOnInsert": doc},
-        upsert=True
+    if lugar.get("source") == "OSM":
+        lugares.update_one(
+            {"osm_id": lugar["osm_id"]},
+            {"$setOnInsert": doc},
+            upsert=True
+        )
+
+    else:
+        lugares.insert_one(doc)
+
+
+def get_lugar(id: str):
+    return collection.find_one(
+        {"id": id},
+        {"_id": 0}
     )
-    
+
+
 def get_all():
     return list(collection.find({}, {"_id": 0}))
 
-def update_lugar(id: int, data: dict):
+
+def update_lugar(lugar_id: str, data: dict):
     update_data = {}
 
     if "nombre" in data:
-        update_data["nombre"] = data["nombre"]
+        nombre = data["nombre"].strip()
+        if len(nombre) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        update_data["nombre"] = nombre
 
-    if "lat" in data and "lon" in data:
-        update_data["lat"] = data["lat"]
-        update_data["lon"] = data["lon"]
+    if "lat" in data:
+        lat = data["lat"]
+        if lat < -90 or lat > 90:
+            raise ValueError("Latitud inválida")
+        update_data["lat"] = lat
 
-    if update_data:
-        collection.update_one(
-            {"id": id},
-            {"$set": update_data}
+    if "lon" in data:
+        lon = data["lon"]
+        if lon < -180 or lon > 180:
+            raise ValueError("Longitud inválida")
+        update_data["lon"] = lon
+
+    if "tipo_nombre" in data:
+        tipo_id = get_or_create_tipo(
+            data["tipo_nombre"],
+            data.get("categoria_nombre")
         )
+        update_data["tipo_id"] = tipo_id
 
-def delete_lugar(id: int):
-    # Cascada lógica: opiniones
+    if not update_data:
+        return False
+
+    result = collection.update_one(
+        {"id": lugar_id},
+        {"$set": update_data}
+    )
+
+    return result.matched_count > 0
+
+
+def delete_lugar(id: str):
     delete_by_lugar(id)
-
-    # Eliminar lugar
     collection.delete_one({"id": id})
 
-def get_by_tipo_nombre(tipo_nombre: str):
-    tipo = get_by_nombre(tipo_nombre)
+
+def get_by_tipo(tipo_id: str):
+    tipo = get_tipo(tipo_id)
 
     if not tipo:
         return []
 
     return list(
         lugares.find(
-            {"tipo_id": tipo["id"]},
+            {"tipo_id": tipo["id_tipo"]},
             {"_id": 0}
         )
     )
 
-def get_by_categoria_nombre(categoria_nombre: str):
-    categoria = get_by_nombre(categoria_nombre)
 
-    if not categoria:
+def get_by_categoria(categoria_id: str):
+    tipos = get_tipos_by_categoria(categoria_id)
+
+    if not tipos:
         return []
 
+    tipo_ids = [t["id_tipo"] for t in tipos]
+
     return list(
-        lugares.find(
-            {"categoria_id": categoria["id"]},
+        collection.find(
+            {"tipo_id": {"$in": tipo_ids}},
             {"_id": 0}
         )
     )
 
-def get_by_servicio(servicio_id: int):
-    return list(collection.find(
-        {"servicios_ids": servicio_id},
-        {"_id": 0}
-    ))
 
-def add_servicio(lugar_id: int, servicio_id: int):
-    collection.update_one(
+def get_by_servicio(servicio_id: str):
+    return list(
+        lugares.find(
+            {"servicios_ids": servicio_id},
+            {"_id": 0}
+        )
+    )
+
+
+def add_servicio(lugar_id: str, servicio_id: str):
+    if not lugares.find_one({"id": lugar_id}):
+        raise ValueError("Lugar no encontrado")
+
+    lugares.update_one(
         {"id": lugar_id},
         {"$addToSet": {"servicios_ids": servicio_id}}
     )
 
-def remove_servicio(lugar_id: int, servicio_id: int):
-    collection.update_one(
+
+def remove_servicio(lugar_id: str, servicio_id: str):
+    if not lugares.find_one({"id": lugar_id}):
+        raise ValueError("Lugar no encontrado")
+
+    lugares.update_one(
         {"id": lugar_id},
         {"$pull": {"servicios_ids": servicio_id}}
     )
+
+
+def update_servicios_lugar(lugar_id: str, servicios: list[str]):
+    servicios_ids = [
+        get_or_create_servicio(nombre)
+        for nombre in servicios
+    ]
+
+    if not lugares.find_one({"id": lugar_id}):
+        raise ValueError("Lugar no encontrado")
+
+    lugares.update_one(
+        {"id": lugar_id},
+        {"$set": {"servicios_ids": servicios_ids}}
+    )
+
+
+def exists_lugar(lugar_id: str) -> bool:
+    return collection.find_one({"id": lugar_id}) is not None

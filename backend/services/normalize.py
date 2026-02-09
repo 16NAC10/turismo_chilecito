@@ -1,5 +1,3 @@
-from dao.tipo_dao import get_or_create_tipo
-
 def detect_tipo(tags: dict) -> str:
     if tags.get("tourism") == "hotel":
         return "hotel"
@@ -36,6 +34,12 @@ def detect_categoria(tipo: str) -> str | None:
     }
     return categorias.get(tipo)
 
+def normalize_nombre(nombre):
+    if not nombre:
+        return None
+    nombre = nombre.strip()
+    return nombre if nombre else None
+
 def normalize_osm_element(el: dict) -> dict:
     tags = el.get("tags", {})
 
@@ -44,10 +48,11 @@ def normalize_osm_element(el: dict) -> dict:
 
     return {
         "osm_id": el["id"],
-        "nombre": tags.get("name"),
+        "nombre": normalize_nombre(tags.get("name")) or "Sin nombre",
         "tipo_nombre": detect_tipo(tags), 
         "categoria_nombre": detect_categoria(detect_tipo(tags)),
         "lat": lat,
         "lon": lon,
-        "opiniones": None
+        "servicios": [],
+        "source": 'OSM'
     }
