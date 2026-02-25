@@ -34,25 +34,63 @@ def detect_categoria(tipo: str) -> str | None:
     }
     return categorias.get(tipo)
 
+
 def normalize_nombre(nombre):
     if not nombre:
         return None
     nombre = nombre.strip()
     return nombre if nombre else None
 
-def normalize_osm_element(el: dict) -> dict:
+
+def normalize_osm_element(el):
+
     tags = el.get("tags", {})
 
     lat = el.get("lat") or el.get("center", {}).get("lat")
     lon = el.get("lon") or el.get("center", {}).get("lon")
 
-    return {
+    osm = {}
+
+    def add_if_exists(key, value):
+
+        if value is not None and value != "":
+            osm[key] = value
+
+    add_if_exists("tourism", tags.get("tourism"))
+    add_if_exists("amenity", tags.get("amenity"))
+    add_if_exists("phone", tags.get("phone"))
+    add_if_exists("email", tags.get("email"))
+    add_if_exists("website", tags.get("website"))
+    add_if_exists("opening_hours", tags.get("opening_hours"))
+    add_if_exists("description", tags.get("description"))
+
+    address = {}
+
+    if tags.get("addr:city"):
+        address["city"] = tags.get("addr:city")
+
+    if tags.get("addr:street"):
+        address["street"] = tags.get("addr:street")
+
+    if tags.get("addr:housenumber"):
+        address["number"] = tags.get("addr:housenumber")
+
+    if address:
+        osm["address"] = address
+
+    lugar = {
+
         "osm_id": el["id"],
-        "nombre": normalize_nombre(tags.get("name")) or "Sin nombre",
-        "tipo_nombre": detect_tipo(tags), 
+        "nombre": tags.get("name", "Sin nombre"),
+        "tipo_nombre": detect_tipo(tags),
         "categoria_nombre": detect_categoria(detect_tipo(tags)),
         "lat": lat,
         "lon": lon,
         "servicios": [],
-        "source": 'OSM'
+        "source": "OSM"
     }
+
+    if len(osm) > 0:
+        lugar["osm"] = osm
+
+    return lugar

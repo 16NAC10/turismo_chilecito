@@ -1,15 +1,16 @@
 import uuid
 
 from fastapi import FastAPI
+from fastapi import HTTPException
 
-from db.init_db import init_database
+from models.servicio import Servicio
 from services.osm_service import fetch_osm_data
 from services.normalize import normalize_osm_element
 from models.opinion import Opinion
 from dao.opinion_dao import (
     create_opinion,
     get_by_lugar,
-    get_promedio_por_lugar, delete_opinion
+    delete_opinion, get_promedio_by_lugar
 )
 from dao.lugar_dao import (
     create_lugar,
@@ -23,7 +24,6 @@ from dao.servicio_dao import get_by_id, create_servicio, get_all_servicios, dele
 from dao.tipo_dao import get_all_tipos, create_tipo, update_tipo, delete_tipo
 from dao.categoria_dao import get_all_categorias, create_categoria, update_categoria, \
     delete_categoria
-from fastapi import HTTPException
 
 app = FastAPI()
 
@@ -85,14 +85,14 @@ def listar_lugares():
     return get_all()
 
 
-@app.get("/lugares/tipo/{tipo_id}")
-def lugares_por_tipo(tipo_id: str):
-    return get_by_tipo(tipo_id)
+@app.get("/lugares/tipo/{tipo_nombre}")
+def lugares_por_tipo(tipo_nombre: str):
+    return get_by_tipo(tipo_nombre)
 
 
-@app.get("/lugares/categoria/{categoria_id}")
-def lugares_por_categoria(categoria_id: str):
-    return get_by_categoria(categoria_id)
+@app.get("/lugares/categoria/{categoria_nombre}")
+def lugares_por_categoria(categoria_nombre: str):
+    return get_by_categoria(categoria_nombre)
 
 
 @app.post("/tipos/new")
@@ -214,9 +214,6 @@ def agregar_servicio_a_lugar(lugar_id: str, servicio_id: str):
     if not exists_lugar(lugar_id):
         raise HTTPException(status_code=404, detail="Lugar no encontrado")
 
-    if not get_by_id(servicio_id):
-        raise HTTPException(status_code=404, detail="Servicio no encontrado")
-
     add_servicio(lugar_id, servicio_id)
 
     return {
@@ -231,24 +228,28 @@ def quitar_servicio_de_lugar(lugar_id: str, servicio_id: str):
     if not lugar:
         raise HTTPException(status_code=404, detail="Lugar no encontrado")
 
-    if servicio_id not in lugar.get("servicios_ids", []):
-        raise HTTPException(
-            status_code=400,
-            detail="El lugar no tiene asociado este servicio"
-        )
-
     remove_servicio(lugar_id, servicio_id)
 
     return {"ok": True, "message": "Servicio eliminado del lugar"}
 
 
+from fastapi import HTTPException
+
 @app.get("/lugares/{lugar_id}/servicios")
 def servicios_de_lugar(lugar_id: str):
-    lugar = lugares.find_one({"id": lugar_id}, {"_id": 0})
-    if not lugar:
-        raise HTTPException(status_code=404, detail="Lugar no encontrado")
 
-    return lugar.get("servicios_ids", [])
+    lugar = lugares.find_one(
+        {"id": lugar_id},
+        {"_id": 0}
+    )
+
+    if not lugar:
+        raise HTTPException(
+            status_code=404,
+            detail="Lugar no encontrado"
+        )
+
+    return lugar.get("servicios", [])
 
 
 @app.post("/opiniones/new")
@@ -270,9 +271,19 @@ def opiniones_por_lugar(lugar_id: str):
     return get_by_lugar(lugar_id)
 
 
-@app.get("/opiniones/promedios")
-def promedios():
-    return get_promedio_por_lugar()
+@app.get("/opiniones/promedios/{lugar_id}")
+def promedio_por_lugar(lugar_id: str):
+
+    resultado = get_promedio_by_lugar(lugar_id)
+
+    if not resultado:
+
+        raise HTTPException(
+            status_code=404,
+            detail="El lugar no tiene opiniones"
+        )
+
+    return resultado
 
 
 @app.delete("/opiniones/{id_opinion}")

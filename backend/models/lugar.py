@@ -1,14 +1,19 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Literal
 
+from models.servicio import Servicio
+from models.tipo import Tipo
+
+
 class Lugar(BaseModel):
     id: str
-    nombre: str = Field(..., min_length=2, max_length=120)
-    tipo_id: str
-    servicios_ids: List[str] = []
-    lat: float = Field(..., ge=-90, le=90)
-    lon: float = Field(..., ge=-180, le=180)
-    source: Literal["OSM", "MANUAL"]
+    nombre: str
+    lat: float
+    lon: float
+    tipo: Tipo
+    servicios: list[Servicio] = []
+    source: str
+    osm: dict | None = None
 
     @field_validator("nombre")
     @classmethod

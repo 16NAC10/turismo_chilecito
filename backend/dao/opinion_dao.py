@@ -32,8 +32,16 @@ def delete_opinion(id_opinion: str) -> bool:
     return result.deleted_count == 1
 
 
-def get_promedio_por_lugar():
-    return list(collection.aggregate([
+def get_promedio_by_lugar(lugar_id: str):
+
+    resultado = list(collection.aggregate([
+
+        {
+            "$match": {
+                "lugar_id": lugar_id
+            }
+        },
+
         {
             "$group": {
                 "_id": "$lugar_id",
@@ -41,6 +49,7 @@ def get_promedio_por_lugar():
                 "cantidad": {"$sum": 1}
             }
         },
+
         {
             "$project": {
                 "_id": 0,
@@ -49,7 +58,10 @@ def get_promedio_por_lugar():
                 "cantidad": 1
             }
         }
+
     ]))
+
+    return resultado[0] if resultado else None
 
 
 def delete_by_lugar(lugar_id: str):
