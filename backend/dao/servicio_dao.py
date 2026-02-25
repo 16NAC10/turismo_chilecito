@@ -29,12 +29,15 @@ def create_servicio(data: dict) -> str:
 
     nuevo = {
         "id_servicio": new_uuid(),
-        "nombre": nombre.strip(),
-        "descripcion": data.get("descripcion")
+        "nombre": nombre.strip()
     }
+
+    if data.get("descripcion"):
+        nuevo["descripcion"] = data.get("descripcion")
 
     servicios.insert_one(nuevo)
     return nuevo["id_servicio"]
+
 
 def get_or_create_servicio(nombre: str, descripcion: str | None = None) -> str:
     serv = collection.find_one({"nombre": nombre})
@@ -43,11 +46,18 @@ def get_or_create_servicio(nombre: str, descripcion: str | None = None) -> str:
 
     new_id = str(uuid.uuid4())
 
-    collection.insert_one({
+    doc = {
+
         "id_servicio": new_id,
-        "nombre": nombre,
-        "descripcion": descripcion
-    })
+
+        "nombre": nombre
+
+    }
+
+    if descripcion:
+        doc["descripcion"] = descripcion
+
+    collection.insert_one(doc)
 
     return new_id
 
